@@ -1,0 +1,383 @@
+---
+title: "MovieLens Project - Machine Learning Submission"
+subtitle: "HarvardX Data Science Capstone - PH125.9x"
+author: "Simon Gibson"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+## Introduction
+
+For the 9th Course in the HarvardX Data Science course we have been asked to build a movie recommendation system using the MovieLens dataset. This report will cover the initial creation of the data set, exploration of the data, creation and refinement of the algorythm.
+
+This movie recommendation system is similar to systems used by many companies such as Amazon and Netflix to recommend movies, books, and music to customers.
+
+The Movielens data package can be found at [the MovieLens homepage](https://movielens.org/).
+
+MovieLens is a project run by GroupLens - a research lab run at the University of Minnesota in North America. MovieLens is a non-commercial collection of movie data and the main set of data contains over 20 million ratings for over 27,000 movies. In this project we are using the [10M dataset](https://grouplens.org/datasets/movielens/10m/).
+
+In order to test the results of the recommendation system we are using the root-mean-square error (RMSE) to measure the difference between the values predicted by the model and the observed values. For this project a RMSE score of less than 0.86490 is the goal.
+
+## Methods
+
+```{r clear, echo=FALSE}
+#clear R variables
+#rm(list = ls ())
+```
+
+```{r packageInstall, echo=FALSE, results="hide", message=FALSE}
+####################################################
+# This code is divided into the following sections #
+# 1. Install required packages                     #
+# 2. edx code for creating data sets               #
+# 3. Data set exploration                          #
+####################################################
+
+##########################################################
+# 1. Install required packages and download data            #
+##########################################################
+
+
+# Note: this process takes a couple of minutes
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "https://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "https://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "https://cran.us.r-project.org") 
+if(!require(kableExtra)) install.packages("kableExtra", repos = "https://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate", repos = "https://cran.us.r-project.org")
+if(!require(scales)) install.packages("scales", repos = "https://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(kableExtra)
+library(lubridate)
+library(scales)
+
+```
+
+```{r dataLoad, echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+# MovieLens 10M dataset:
+# https://grouplens.org/datasets/movielens/10m/
+# http://files.grouplens.org/datasets/movielens/ml-10m.zip
+
+options(timeout = 120)
+
+dl <- "ml-10M100K.zip"
+if(!file.exists(dl))
+  download.file("https://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+
+ratings_file <- "ml-10M100K/ratings.dat"
+if(!file.exists(ratings_file))
+  unzip(dl, ratings_file)
+
+movies_file <- "ml-10M100K/movies.dat"
+if(!file.exists(movies_file))
+  unzip(dl, movies_file)
+
+ratings <- as.data.frame(str_split(read_lines(ratings_file), fixed("::"), simplify = TRUE),
+                         stringsAsFactors = FALSE)
+colnames(ratings) <- c("userId", "movieId", "rating", "timestamp")
+ratings <- ratings %>%
+  mutate(userId = as.integer(userId),
+         movieId = as.integer(movieId),
+         rating = as.numeric(rating),
+         timestamp = as.integer(timestamp))
+
+movies <- as.data.frame(str_split(read_lines(movies_file), fixed("::"), simplify = TRUE),
+                        stringsAsFactors = FALSE)
+colnames(movies) <- c("movieId", "title", "genres")
+movies <- movies %>%
+  mutate(movieId = as.integer(movieId))
+
+movielens <- left_join(ratings, movies, by = "movieId")
+
+# Final hold-out test set will be 10% of MovieLens data
+set.seed(1, sample.kind="Rounding") # if using R 3.6 or later
+
+# set.seed(1) # if using R 3.5 or earlier
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.9, list = FALSE)
+edx <- movielens[-test_index,]
+temp <- movielens[test_index,]
+
+# Make sure userId and movieId in final hold-out test set are also in edx set
+final_holdout_test <- temp %>% 
+  semi_join(edx, by = "movieId") %>%
+  semi_join(edx, by = "userId")
+
+# Add rows removed from final hold-out test set back into edx set
+removed <- anti_join(temp, final_holdout_test)
+edx <- rbind(edx, removed)
+
+rm(dl, ratings, movies, test_index, temp, movielens, removed)
+
+##########################################
+# End of edx code                        #
+##########################################
+```
+
+The data is divided into 2 sets. The first set is used to train the algorythm and the second set is used to validate the algorythm. By dividing the data the problem of over-training and thus producing skewed results can be avoided.
+
+The creation of the 2 sets involves the following steps. Initially required packages are installed if not installed and then loaded. Next the data is downloaded if the zip files are not found. Column names are set and the data is converted into forms more easily processed. Then the data is joined. Finally the joined data is split into 2 sets - the edx set used to train the algorythm and the final_holdout_test set that will be used to validate the algorythm and calculate the final RMSE score.
+
+## Data Exploration
+
+To start with we use the head command to view the first 10 rows of data.
+
+```{r dataExplorationHead, echo=FALSE,  message=FALSE}
+##########################################
+# combine with 8.6.2 recommendation code #
+##########################################
+
+#create a smaller dataset as this laptop cant handle the full set
+#edx20 <- createDataPartition(edx$rating, times=1, p=.02, list=FALSE)
+
+#Overview of Data / Initial exploration
+#kable(head(edx), "pipe", 10)
+kbl(head(edx,10), caption = "EDX Dataset Overview - First 10 Rows", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+Looking at the first 5 rows of the data in the edX data set we can see the columns we have to work with - userId, movieId, rating, timestamp, title and genre.
+
+Some initial areas of interest here are the timestamp and genres columns. As time passes do movies get higher ratings? Possibly there is some survivability bias that means that movies that continue being reviewed are ones that people have enjoyed and have been recommended, for example through word of mouth or via similar recommendation engines. The genre column also shows collections of genre keywords, rather than single genres. These collections could also prove to be useful.
+
+If we convert the timestamps, we can see that the oldest review is dated 29th January 1996 and the most recent timestamp is 5th January 2009.
+
+Next we can use the summary command to produce result summaries of the results of various model fitting functions.
+
+```{r dataExplorationSummary, echo=FALSE,  message=FALSE}
+#kable(summary(edx), "simple")
+kable(summary(edx), caption = "EDX Dataset Summary", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+```{r dataExplorationDate, echo=FALSE,  message=FALSE}
+
+#add a column with the datestamp in human readable form
+edx$date <- as.POSIXct(edx$timestamp, origin="1970-01-01")
+#get the earliest date
+minDate <- min(edx$date)
+#get the latest date
+maxDate <- max(edx$date)
+```
+
+As we can see from the summary, from a statistical perspective in the current form, the most useful column is the rating row. The timestamp row is in Unix epoch time (seconds from the 1st of January 1970) so that will need to be converted to a human readable format if that is found to be useful.
+
+The following table shows the distinct number of User IDs, Movie IDs, Titles, and Genres. The last column is a check for any unset variables. This will return TRUE if present and FALSE if not.
+
+```{r dataExplorationSummaryDistinct, echo=FALSE,  message=FALSE}
+movieCount <- n_distinct(edx$title)
+userCount <- n_distinct(edx$userId)
+genreCount <- n_distinct(edx$genres)
+
+edx_summarise <- edx |> 
+  summarise(Users = n_distinct(userId),
+            MoviesIds = n_distinct(movieId),
+            Titles = n_distinct(title),
+            Genres = n_distinct(genres),
+            MissingValues = anyNA(edx))
+
+#kable(edx_summarise, title = "Summary of Movielens Data Set", "pipe")
+kable(edx_summarise, caption = "Summary of Movielens Data Set", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+The number of movies reviewed is higher than the number of reviewers. Also we can see that the number of genres is quite large due to the usage of different arrays of keywords to describe the movies. Also we can see that all there are no "Not Available" or missing values.
+
+An initial look at the ratings using the summary function gave a mean of 3.515 and a median value of 4.
+
+The following table shows the count of ratings. Whole numbers are much more commonly chosen when rating movies than decimal ratings.
+
+```{r dataExplorationRatingTable, echo=FALSE, message=FALSE, warning=FALSE}
+edx_table <- table(edx$rating)
+
+kable(edx_table, caption = "Rating Distribution", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+From this we can see that people are more likely to rate movies in whole numbers. If we plot this as a graph it is much more evident.
+
+```{r dataExplorationRatingHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
+#plot of the ratings
+edx_hist1 <- edx %>% 
+  ggplot(aes(edx$rating)) +
+  geom_histogram(binwidth=0.5, colour="#094438", fill="#97d2dd") + 
+  ggtitle("edx Rating Histogram") + 
+  xlab("Rating") +
+  ylab("Count") +
+  scale_y_continuous(labels = scales::label_number_si()) +
+  theme(aspect.ratio=0.6)
+edx_hist1
+```
+
+### Whole number ratings
+
+Now we will look at the data to see if rating with whole numbers compared to decimals has any impact.
+
+First whole numbers - the subset of the edx dataset that has ratings 1, 2, 3, 4, 5:
+
+```{r dataExplorationRating1, echo=FALSE, message=FALSE, warning=FALSE}
+seq1 <- seq(1,5,1)
+edx1 <- edx[edx$rating %in% seq1,]
+#head(edx1)
+
+edx1_summarise <- edx1 |> 
+  summarise(Users = n_distinct(userId),
+            MoviesIds = n_distinct(movieId),
+            Titles = n_distinct(title),
+            Genres = n_distinct(genres))
+
+#kable(edx1_summarise)
+
+kable(edx1_summarise, caption = "Whole Number Ratings", booktabs = T) %>%     kable_styling(latex_options = "hold_position")
+
+#summary(edx1$rating)
+
+```
+
+### Decimal Point Ratings
+
+Then the decimal ratings - the subset of the edx dataset with ratings 0.5, 1.5, 2.5, 3.5 or 4.5:
+
+```{r dataExplorationRating0.5, echo=FALSE,  message=FALSE}
+seq0.5 <- seq(0.5,4.5,1)
+edx0.5 <- edx[edx$rating %in% seq0.5,]
+#head(edx0.5)
+
+edx0.5_summarise <- edx0.5 |> 
+  summarise(Users = n_distinct(userId),
+            MoviesIds = n_distinct(movieId),
+            Titles = n_distinct(title),
+            Genres = n_distinct(genres))
+
+kbl(edx0.5_summarise, caption = "Decimal Point Ratings", booktabs = T) %>%     kable_styling(latex_options = "hold_position")
+  
+summary(edx0.5$rating)
+
+```
+
+### Ratings Per User
+
+Now we turn to the count of ratings per user.
+
+```{r dataExplorationUser, echo=FALSE,  message=FALSE}
+edx_reviewperuser <- edx %>% 
+  count(userId) %>%
+  ggplot(aes(n)) +
+  geom_histogram(binwidth=0.5, colour="#094438", fill="#97d2dd") +
+  ggtitle("edx Count of Ratings per User") + 
+  scale_x_log10()+
+  xlab("Movies") +
+  ylab("Count per User") +
+  theme(aspect.ratio=0.6)
+edx_reviewperuser
+
+```
+
+### Ratings Per Movie
+
+Again we can see that some movies are more popular than others and therefore have more reviews than less popular films.
+
+```{r dataExplorationMovie, echo=FALSE,  message=FALSE}
+edx_reviewpermovie <- edx%>% 
+  count(movieId) %>%
+  ggplot(aes(n)) +
+  geom_histogram(binwidth=0.5, colour="#094438", fill="#97d2dd") +
+  ggtitle("edx Count of Ratings per Movie") + 
+  scale_x_log10()+
+  xlab("Movies") +
+  ylab("Count per Movie") +
+  theme(aspect.ratio=0.6)
+edx_reviewpermovie
+```
+
+If we look at the average number of films reviewed by each reviewer we get the following results.
+
+```{r number_ratings_given_by_users, echo = FALSE, fig.height=4, fig.width=5}
+
+edx %>%
+  count(userId) %>%
+    ggplot(aes(n)) +
+    geom_histogram(bins = 30, color = "#094438", fill="#97d2dd") +
+    scale_x_log10() +
+    xlab("Number of ratings") + 
+    ylab("Number of users") +
+    ggtitle("Number of ratings given by users")
+
+```
+
+# 
+
+```{r modelInvestigation, echo=FALSE, results="hide", message=FALSE}
+
+# code from harvadx course, see README.md Reference #2
+# calculate naive rmse 
+
+#RMSE calculation function
+RMSE <- function(true_ratings, predicted_ratings){
+  sqrt(mean((true_ratings - predicted_ratings)^2))
+}
+#33.7.2 Recommendation systems as a machine learning challenge
+y <- select(edx, movieId, userId, rating) |>
+  pivot_wider(names_from = movieId, values_from = rating) 
+rnames <- y$userId
+y <- as.matrix(y[,-1])
+rownames(y) <- rnames
+
+#For starters lets find the mean
+
+mu_hat <- mean(edx$rating, na.rm = TRUE)
+mu_hat
+# mean 3.512465
+
+naive_rmse <- RMSE(edx$rating, mu_hat)
+naive_rmse
+# naive_rmse == 1.060331
+
+rmse_results <- tibble(method = "Simple average", RMSE = naive_rmse)
+
+# this errors as it is too large
+#fit <- lm(rating ~ as.factor(userId), data = edx)
+
+#lse <- colMeans(edx - mu_hat)
+
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarize(lse = mean(rating - mu_hat))
+
+predicted_ratings <- mu_hat + edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  pull(lse)
+
+model_1_rmse <- RMSE(predicted_ratings, edx$rating)
+model_1_rmse
+rmse_results <- rmse_results %>% add_row(method = "Group By MovieID", RMSE = model_1_rmse)
+
+
+# check if the same user effect (many ratings) is present in this codeset as it was in unit 8
+edx %>% 
+  group_by(userId) %>% 
+  summarize(b_u = mean(rating)) %>% 
+  filter(n()>=100) %>%
+  ggplot(aes(b_u)) + 
+  geom_histogram(bins = 30, colour="#094438", fill="#97d2dd")
+
+#compute an approximation by computing mu and bi and estimating bu as the average of : 
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>%
+  summarize(b_u = mean(rating - mu_hat - lse))
+
+predicted_ratings <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  mutate(pred = mu_hat + lse + b_u) %>%
+  pull(pred)
+
+
+model_2_rmse <- RMSE(predicted_ratings, edx$rating)
+
+rmse_results <- rmse_results %>% add_row(method = "Group By userID", RMSE = model_2_rmse)
+
+# rmse_results is lower than RMSE required for course
+rmse_results$RMSE < 0.86490
+```
