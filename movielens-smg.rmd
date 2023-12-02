@@ -8,7 +8,7 @@ output: pdf_document
 
 ## Introduction
 
-For the 9th Course in the HarvardX Data Science course we have been asked to build a movie recommendation system using the MovieLens dataset. This report will cover the initial creation of the data set, exploration of the data, creation and refinement of the algorythm.
+For the 9th Course in the HarvardX Data Science course we have been asked to build a movie recommendation system using the MovieLens dataset. This report will cover the initial creation of the data set, exploration of the data, creation and refinement of the algorithm.
 
 This movie recommendation system is similar to systems used by many companies such as Amazon and Netflix to recommend movies, books, and music to customers.
 
@@ -46,6 +46,7 @@ if(!require(dplyr)) install.packages("dplyr", repos = "https://cran.us.r-project
 if(!require(kableExtra)) install.packages("kableExtra", repos = "https://cran.us.r-project.org")
 if(!require(lubridate)) install.packages("lubridate", repos = "https://cran.us.r-project.org")
 if(!require(scales)) install.packages("scales", repos = "https://cran.us.r-project.org")
+if(!require(stringr)) install.packages("scales", repos = "https://cran.us.r-project.org")
 
 library(tidyverse)
 library(caret)
@@ -53,6 +54,7 @@ library(dplyr)
 library(kableExtra)
 library(lubridate)
 library(scales)
+library(stringr)
 
 ```
 
@@ -116,9 +118,9 @@ rm(dl, ratings, movies, test_index, temp, movielens, removed)
 ##########################################
 ```
 
-The data is divided into 2 sets. The first set is used to train the algorythm and the second set is used to validate the algorythm. By dividing the data the problem of over-training and thus producing skewed results can be avoided.
+The data is divided into 2 sets. The first set is used to train the algorithm and the second set is used to validate the algorithm. By dividing the data the problem of over-training and thus producing skewed results can be avoided.
 
-The creation of the 2 sets involves the following steps. Initially required packages are installed if not installed and then loaded. Next the data is downloaded if the zip files are not found. Column names are set and the data is converted into forms more easily processed. Then the data is joined. Finally the joined data is split into 2 sets - the edx set used to train the algorythm and the final_holdout_test set that will be used to validate the algorythm and calculate the final RMSE score.
+The creation of the 2 sets involves the following steps. Initially required packages are installed if not installed and then loaded. Next the data is downloaded if the zip files are not found. Column names are set and the data is converted into forms more easily processed. Then the data is joined. Finally the joined data is split into 2 sets - the edx set used to train the algorithm and the final_holdout_test set that will be used to validate the algorithm and calculate the final RMSE score.
 
 ## Data Exploration
 
@@ -138,11 +140,118 @@ kbl(head(edx,10), caption = "EDX Dataset Overview - First 10 Rows", booktabs = T
 
 ```
 
-Looking at the first 5 rows of the data in the edX data set we can see the columns we have to work with - userId, movieId, rating, timestamp, title and genre.
+Looking at the first 5 rows of the data in the edX data set we can see the columns we have to work with - userId, movieId, rating, time stamp, title and genre.
 
-Some initial areas of interest here are the timestamp and genres columns. As time passes do movies get higher ratings? Possibly there is some survivability bias that means that movies that continue being reviewed are ones that people have enjoyed and have been recommended, for example through word of mouth or via similar recommendation engines. The genre column also shows collections of genre keywords, rather than single genres. These collections could also prove to be useful.
+Some initial areas of interest here are the time stamp and genres columns. As time passes do movies get higher ratings?
 
-If we convert the timestamps, we can see that the oldest review is dated 29th January 1996 and the most recent timestamp is 5th January 2009.
+If we take the example of literature, works such as those by the likes of Homer and Shakespeare survive while over time lesser works are weeded out. Possibly there is some survivability bias that means that movies that continue being reviewed are ones that people have enjoyed and have been recommended, for example through word of mouth or via similar recommendation engines. 
+
+The genre column also shows collections of genre keywords, rather than single genres. These collections could also prove to be useful.
+
+```{r dataExplorationDate, echo=FALSE,  message=FALSE}
+
+#add a column with the datestamp in human readable form
+edx$date <- as.POSIXct(edx$timestamp, origin="1970-01-01")
+maxFullDate <- max(edx$date)
+#translate date to year
+edx$reviewYear <- as.integer(format(edx$date, format="%Y"))
+
+#get the earliest date
+minDate <- min(edx$date)
+#get the latest date
+maxDate <- max(edx$date)
+```
+
+If we convert the time stamps, we can see that the oldest review is dated `r minDate` and the most recent time stamp is `r maxDate`.
+
+```{r dataExplorationDateHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
+#plot of the review dates
+edx_dataExplorationDateHistogram <- edx %>% 
+  ggplot(aes(edx$reviewYear)) +
+  geom_histogram(binwidth=1, colour="#094438", fill="#97d2dd") + 
+  ggtitle("edx Review Date Histogram") + 
+  xlab("Year") +
+  ylab("Count") +
+  scale_y_continuous(labels = scales::label_number_si()) +
+  theme(aspect.ratio=1)
+edx_dataExplorationDateHistogram
+
+```
+
+```{r releaseYear, echo=FALSE, message=FALSE}
+
+#add a column with the release year extracted from the column 
+edx$releaseYear <- str_extract(edx$title, "\\([0-9][0-9][0-9][0-9]\\)")
+
+#remove parentheses from edx$releaseYear
+edx$releaseYear <- str_sub(edx$releaseYear, 2, -2)
+                    
+edx$releaseYear <- edx$releaseYear %>% as.integer(edx$releaseYear)                    
+
+#get the earliest year a movie was released in the dataset
+minReleaseYear <- min(edx$releaseYear)
+
+#get the latest year a movie was released in the dataset
+maxReleaseYear <- max(edx$releaseYear)
+
+```
+
+If we extract the release year from the title column we find that the earliest movie reviewed was released in `r minReleaseYear` and the most recently reviewed movie was released in `r maxReleaseYear`. This makes sense given the final review in the data set was received at `r maxFullDate`. During the time the dataset was collated there were 2 ways people were exposed to movies - at theaters and at home on video cassette. Theaters predominantly showed new releases with occasional film festivals and late night showings of classic films such as Clockwork Orange and The Rocky Horror Picture Show. Video Cassettes were rented from local video stores and were a mix of recent releases and classic films. 
+
+```{r dataExplorationReleaseHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
+#plot of the release dates
+edx_dataExplorationReleaseHistogram <- edx %>% 
+  ggplot(aes(edx$releaseYear)) +
+  geom_histogram(binwidth=1, colour="#094438", fill="#97d2dd") + 
+  ggtitle("edx Release Year Histogram") + 
+  xlab("Year") +
+  ylab("Count") +
+  scale_y_continuous(labels = scales::label_number_si()) +
+  theme(aspect.ratio=1)
+edx_dataExplorationReleaseHistogram
+
+```
+
+If we look at the relationship between rating and the length of time between the release of the movie and the review we get the following.
+
+```{r dataExplorationReleaseReviewHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
+#plot of the review dates vs release dates
+
+dataExplorationReviewLagHistogram <- edx %>% 
+  mutate(reviewLag = edx$reviewYear - edx$releaseYear) %>%
+  group_by(reviewLag) %>%
+  summarise(Difference = n()) %>%
+  ggplot(aes(reviewLag, Difference)) +
+  geom_bar(stat = "identity", colour="#094438", fill="#97d2dd") + 
+  ggtitle("edx Years Between Review and Release") + 
+  xlab("Years") +
+  ylab("Count") +
+  scale_y_continuous(labels = scales::label_number_si()) +
+  theme(aspect.ratio=1)
+dataExplorationReviewLagHistogram
+
+```
+
+If we combine the age of the movie with the mean rating we get the following graph which shows that older movies have higher average ratings. These movies would predominately be the older movies offered by video stores or exhibited during film festivals. Due to long tail effects these higher ratings are to be expected.
+
+```{r dataExplorationMeanReleaseReviewHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
+#plot of the review dates vs release dates
+
+dataExplorationMeanReviewLagHistogram <- edx %>% 
+  mutate(reviewLag = edx$reviewYear - edx$releaseYear) %>%
+  group_by(reviewLag) %>%
+  summarize(rating = mean(rating)) %>%
+  ggplot(aes(reviewLag, rating)) +
+  geom_point() +
+  geom_smooth(colour="#094438", fill="#97d2dd")  + 
+  theme_bw() +
+  scale_x_continuous(breaks = seq(0,100, by=10)) +
+  xlab("Years") +
+  ylab("Rating") +
+  ggtitle("Effect of Movie Age on Rating.")
+dataExplorationMeanReviewLagHistogram
+
+```
 
 Next we can use the summary command to produce result summaries of the results of various model fitting functions.
 
@@ -151,17 +260,9 @@ Next we can use the summary command to produce result summaries of the results o
 kable(summary(edx), caption = "EDX Dataset Summary", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
 ```
 
-```{r dataExplorationDate, echo=FALSE,  message=FALSE}
 
-#add a column with the datestamp in human readable form
-edx$date <- as.POSIXct(edx$timestamp, origin="1970-01-01")
-#get the earliest date
-minDate <- min(edx$date)
-#get the latest date
-maxDate <- max(edx$date)
-```
 
-As we can see from the summary, from a statistical perspective in the current form, the most useful column is the rating row. The timestamp row is in Unix epoch time (seconds from the 1st of January 1970) so that will need to be converted to a human readable format if that is found to be useful.
+As we can see from the summary, from a statistical perspective in the current form, the most useful column is the rating row. The time stamp row is in Unix epoch time (seconds from the 1st of January 1970) so that will need to be converted to a human readable format if that is found to be useful.
 
 The following table shows the distinct number of User IDs, Movie IDs, Titles, and Genres. The last column is a check for any unset variables. This will return TRUE if present and FALSE if not.
 
@@ -353,7 +454,7 @@ model_1_rmse
 rmse_results <- rmse_results %>% add_row(method = "Group By MovieID", RMSE = model_1_rmse)
 
 
-# check if the same user effect (many ratings) is present in this codeset as it was in unit 8
+# check if the same user effect (many ratings) is present in this code set as it was in unit 8
 edx %>% 
   group_by(userId) %>% 
   summarize(b_u = mean(rating)) %>% 
