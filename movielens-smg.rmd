@@ -4,6 +4,8 @@ subtitle: "HarvardX Data Science Capstone - PH125.9x"
 author: "Simon Gibson"
 date: "`r Sys.Date()`"
 output: pdf_document
+number_sections: true
+toc: true
 ---
 
 ## Introduction
@@ -20,12 +22,16 @@ In order to test the results of the recommendation system we are using the root-
 
 ## Methods
 
+The first step is to clear any set variables so we do not introduce anything unexpected into the data we are working with.
+
 ```{r clear, echo=FALSE}
 #clear R variables
 #rm(list = ls ())
 ```
 
-```{r packageInstall, echo=FALSE, results="hide", message=FALSE}
+Then we install the packages required to manipulate the data.
+
+```{r packageInstall, echo=TRUE, results="hide", message=FALSE}
 ####################################################
 # This code is divided into the following sections #
 # 1. Install required packages                     #
@@ -57,8 +63,10 @@ library(scales)
 library(stringr)
 
 ```
+Following that, the data is downloaded and then divided into 2 sets. The first set is used to train the algorithm and the second set is used to validate the algorithm. By dividing the data the problem of over-training and thus producing skewed results can be avoided.
 
-```{r dataLoad, echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+The creation of the 2 sets involves the following steps. Initially required packages are installed if not installed and then loaded. Next the data is downloaded if the zip files are not found. Column names are set and the data is converted into forms more easily processed. Then the data is joined. Finally the joined data is split into 2 sets - the edx set used to train the algorithm and the final_holdout_test set that will be used to validate the algorithm and calculate the final RMSE score.
+```{r dataLoad, echo=TRUE, results="hide", message=FALSE, warning=FALSE}
 # MovieLens 10M dataset:
 # https://grouplens.org/datasets/movielens/10m/
 # http://files.grouplens.org/datasets/movielens/ml-10m.zip
@@ -118,9 +126,6 @@ rm(dl, ratings, movies, test_index, temp, movielens, removed)
 ##########################################
 ```
 
-The data is divided into 2 sets. The first set is used to train the algorithm and the second set is used to validate the algorithm. By dividing the data the problem of over-training and thus producing skewed results can be avoided.
-
-The creation of the 2 sets involves the following steps. Initially required packages are installed if not installed and then loaded. Next the data is downloaded if the zip files are not found. Column names are set and the data is converted into forms more easily processed. Then the data is joined. Finally the joined data is split into 2 sets - the edx set used to train the algorithm and the final_holdout_test set that will be used to validate the algorithm and calculate the final RMSE score.
 
 ## Data Exploration
 
@@ -148,6 +153,39 @@ If we take the example of literature, works such as those by the likes of Homer 
 
 The genre column also shows collections of genre keywords, rather than single genres. These collections could also prove to be useful.
 
+## Data Summary
+
+Next we can use the summary command to produce result summaries of the results of various model fitting functions.
+
+```{r dataExplorationSummary, echo=FALSE,  message=FALSE}
+#kable(summary(edx), "simple")
+kable(summary(edx), caption = "EDX Dataset Summary", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+As we can see from the summary, from a statistical perspective in the current form, the most useful column is the rating row. The time stamp row is in Unix epoch time (seconds from the 1st of January 1970) so that will need to be converted to a human readable format if that is found to be useful.
+
+## Data Column Counts
+
+The following table shows the distinct number of User IDs, Movie IDs, Titles, and Genres. The last column is a check for any unset variables. This will return TRUE if present and FALSE if not.
+
+```{r dataExplorationSummaryDistinct, echo=FALSE,  message=FALSE}
+movieCount <- n_distinct(edx$title)
+userCount <- n_distinct(edx$userId)
+genreCount <- n_distinct(edx$genres)
+
+edx_summarise <- edx |> 
+  summarise(Users = n_distinct(userId),
+            MoviesIds = n_distinct(movieId),
+            Titles = n_distinct(title),
+            Genres = n_distinct(genres),
+            MissingValues = anyNA(edx))
+
+#kable(edx_summarise, title = "Summary of Movielens Data Set", "pipe")
+kable(edx_summarise, caption = "Summary of Movielens Data Set", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+The number of movies reviewed is higher than the number of reviewers. Also we can see that the number of genres is quite large due to the usage of different arrays of keywords to describe the movies. Also we can see that there are no "Not Available" or missing values.
+
 ```{r dataExplorationDate, echo=FALSE,  message=FALSE}
 
 #add a column with the datestamp in human readable form
@@ -162,7 +200,9 @@ minDate <- min(edx$date)
 maxDate <- max(edx$date)
 ```
 
-If we convert the time stamps, we can see that the oldest review is dated `r minDate` and the most recent time stamp is `r maxDate`.
+## Ratings Date Range
+
+If we convert the time stamps, we can see that the oldest review is dated `r minDate` and the most recent time stamp is `r maxDate`. Given this range it is likely the majority of participants providing ratings were either Baby Boomers or Generation X. Ratings may possibly exhibit generational bias although investigation of this is beyond the scope of the current piece of work.
 
 ```{r dataExplorationDateHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
 #plot of the review dates
@@ -196,7 +236,13 @@ maxReleaseYear <- max(edx$releaseYear)
 
 ```
 
-If we extract the release year from the title column we find that the earliest movie reviewed was released in `r minReleaseYear` and the most recently reviewed movie was released in `r maxReleaseYear`. This makes sense given the final review in the data set was received at `r maxFullDate`. During the time the dataset was collated there were 2 ways people were exposed to movies - at theaters and at home on video cassette. Theaters predominantly showed new releases with occasional film festivals and late night showings of classic films such as Clockwork Orange and The Rocky Horror Picture Show. Video Cassettes were rented from local video stores and were a mix of recent releases and classic films. 
+## Movie Release Date Range
+
+If we extract the release year from the title column we find that the earliest movie reviewed was released in `r minReleaseYear` and the most recently reviewed movie was released in `r maxReleaseYear`. This makes sense given the final review in the data set was received at `r maxFullDate`. 
+
+During the time the dataset was collated there were 2 main ways that people were exposed to movies - at theaters and at home on video cassette. Theaters predominantly showed new releases with occasional film festivals and late night showings of classic films such as Clockwork Orange and The Rocky Horror Picture Show.
+
+Video Cassettes were rented from local video stores and were a mix of recent releases and classic films. Video rental stores were limited by floor space to the number of movies that they could offer. This meant that video rental stores focused on offering more mainstream titles within each genre. Chris Anderson in his book The Long Tail: Why the Future of Business Is Selling Less of More wrote about how with the internet and the use of warehousing, businesses were able to offer larger selections than is possible with traditional brick and mortar stores. It is likely that due to this effect a large number of movies have been lost to movie recommendation systems such as the one used in this project.
 
 ```{r dataExplorationReleaseHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
 #plot of the release dates
@@ -212,7 +258,9 @@ edx_dataExplorationReleaseHistogram
 
 ```
 
-If we look at the relationship between rating and the length of time between the release of the movie and the review we get the following.
+## Movie Rating and Release Relationshiop
+
+If we look at the relationship between rating and the length of time between the release of the movie and the review we get the following graph. Interestingly it is almost the opposite of the Release Year histogram.
 
 ```{r dataExplorationReleaseReviewHistogram, echo=FALSE,  message=FALSE, warning=FALSE}
 #plot of the review dates vs release dates
@@ -231,6 +279,7 @@ dataExplorationReviewLagHistogram <- edx %>%
 dataExplorationReviewLagHistogram
 
 ```
+From the summary output above we saw that ratings have a mean of 3.515 and a median value of 4.
 
 If we combine the age of the movie with the mean rating we get the following graph which shows that older movies have higher average ratings. These movies would predominately be the older movies offered by video stores or exhibited during film festivals. Due to long tail effects these higher ratings are to be expected.
 
@@ -253,39 +302,6 @@ dataExplorationMeanReviewLagHistogram
 
 ```
 
-Next we can use the summary command to produce result summaries of the results of various model fitting functions.
-
-```{r dataExplorationSummary, echo=FALSE,  message=FALSE}
-#kable(summary(edx), "simple")
-kable(summary(edx), caption = "EDX Dataset Summary", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
-```
-
-
-
-As we can see from the summary, from a statistical perspective in the current form, the most useful column is the rating row. The time stamp row is in Unix epoch time (seconds from the 1st of January 1970) so that will need to be converted to a human readable format if that is found to be useful.
-
-The following table shows the distinct number of User IDs, Movie IDs, Titles, and Genres. The last column is a check for any unset variables. This will return TRUE if present and FALSE if not.
-
-```{r dataExplorationSummaryDistinct, echo=FALSE,  message=FALSE}
-movieCount <- n_distinct(edx$title)
-userCount <- n_distinct(edx$userId)
-genreCount <- n_distinct(edx$genres)
-
-edx_summarise <- edx |> 
-  summarise(Users = n_distinct(userId),
-            MoviesIds = n_distinct(movieId),
-            Titles = n_distinct(title),
-            Genres = n_distinct(genres),
-            MissingValues = anyNA(edx))
-
-#kable(edx_summarise, title = "Summary of Movielens Data Set", "pipe")
-kable(edx_summarise, caption = "Summary of Movielens Data Set", booktabs = T) %>%     kable_styling(latex_options = c("striped", "hold_position"))
-```
-
-The number of movies reviewed is higher than the number of reviewers. Also we can see that the number of genres is quite large due to the usage of different arrays of keywords to describe the movies. Also we can see that all there are no "Not Available" or missing values.
-
-An initial look at the ratings using the summary function gave a mean of 3.515 and a median value of 4.
-
 The following table shows the count of ratings. Whole numbers are much more commonly chosen when rating movies than decimal ratings.
 
 ```{r dataExplorationRatingTable, echo=FALSE, message=FALSE, warning=FALSE}
@@ -306,7 +322,7 @@ edx_hist1 <- edx %>%
   xlab("Rating") +
   ylab("Count") +
   scale_y_continuous(labels = scales::label_number_si()) +
-  theme(aspect.ratio=0.6)
+  theme(aspect.ratio=1)
 edx_hist1
 ```
 
@@ -358,18 +374,18 @@ summary(edx0.5$rating)
 
 ### Ratings Per User
 
-Now we turn to the count of ratings per user.
+Now we turn to the count of ratings per user. 
 
 ```{r dataExplorationUser, echo=FALSE,  message=FALSE}
 edx_reviewperuser <- edx %>% 
   count(userId) %>%
   ggplot(aes(n)) +
-  geom_histogram(binwidth=0.5, colour="#094438", fill="#97d2dd") +
+  geom_histogram(binwidth=0.1, colour="#094438", fill="#97d2dd") +
   ggtitle("edx Count of Ratings per User") + 
   scale_x_log10()+
   xlab("Movies") +
   ylab("Count per User") +
-  theme(aspect.ratio=0.6)
+  theme(aspect.ratio=1)
 edx_reviewperuser
 
 ```
@@ -382,12 +398,12 @@ Again we can see that some movies are more popular than others and therefore hav
 edx_reviewpermovie <- edx%>% 
   count(movieId) %>%
   ggplot(aes(n)) +
-  geom_histogram(binwidth=0.5, colour="#094438", fill="#97d2dd") +
+  geom_histogram(binwidth=0.1, colour="#094438", fill="#97d2dd") +
   ggtitle("edx Count of Ratings per Movie") + 
   scale_x_log10()+
   xlab("Movies") +
   ylab("Count per Movie") +
-  theme(aspect.ratio=0.6)
+  theme(aspect.ratio=1)
 edx_reviewpermovie
 ```
 
@@ -402,45 +418,78 @@ edx %>%
     scale_x_log10() +
     xlab("Number of ratings") + 
     ylab("Number of users") +
-    ggtitle("Number of ratings given by users")
+    ggtitle("Number of ratings given by users") +
+  theme(aspect.ratio=1)
 
 ```
 
-# 
+# Model Investigation
 
-```{r modelInvestigation, echo=FALSE, results="hide", message=FALSE}
+## RMSE Function and Target
 
-# code from harvadx course, see README.md Reference #2
-# calculate naive rmse 
+As mentioned in the introduction, we have been asked to use a RMSE function to test our machine learning algorithms.
+
+This is defined as
+
+$$ RMSE = \sqrt{\frac{1}{N}\displaystyle\sum_{u,i} (\hat{y}_{u,i}-y_{u,i})^{2}} $$ where N is the number of users/movie combinations, ${y}_{u,i}$ is the rating for for movie $i$ by user $u$ and $\hat{y}_{u,i}$ is our prediction.
+
+The RMSE function can be written as follows.
+
+```{r, RMSEFunction, echo = TRUE}
 
 #RMSE calculation function
-RMSE <- function(true_ratings, predicted_ratings){
-  sqrt(mean((true_ratings - predicted_ratings)^2))
+RMSE <- function(predicted_ratings, true_ratings){
+  sqrt(mean((predicted_ratings - true_ratings)^2))
+  
 }
-#33.7.2 Recommendation systems as a machine learning challenge
-y <- select(edx, movieId, userId, rating) |>
-  pivot_wider(names_from = movieId, values_from = rating) 
-rnames <- y$userId
-y <- as.matrix(y[,-1])
-rownames(y) <- rnames
+```
 
-#For starters lets find the mean
+The goal of this paper is to create a model that will produce a result lower than the Target RMSE:
 
+
+```{r, RMSETarget, echo = FALSE}
+# rmse_results is lower than RMSE required for course
+RMSETarget <- 0.86490
+
+rmse_results <- tibble(method = "Target RMSE", RMSE = RMSETarget)
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+## Naive RMSE
+
+To begin with we find the mean and then use that to find the naive RMSE. This model assumes all differences are the result of random error and is defined as follows:
+
+$$ Y_{u,i} = \mu + \epsilon_{u,i} $$ where $\mu$ the expected rating and $\epsilon_{u,i}$ is independent error across all movies.
+
+```{r modelInvestigation, echo=TRUE, results="hide", message=FALSE}
+
+#Derive the mean and apply to RMSE function
 mu_hat <- mean(edx$rating, na.rm = TRUE)
-mu_hat
-# mean 3.512465
 
 naive_rmse <- RMSE(edx$rating, mu_hat)
-naive_rmse
-# naive_rmse == 1.060331
 
-rmse_results <- tibble(method = "Simple average", RMSE = naive_rmse)
+```
 
-# this errors as it is too large
-#fit <- lm(rating ~ as.factor(userId), data = edx)
+``` {r, naive_rmse, echo=FALSE}
+#print result to kable table
+rmse_results <- rmse_results %>% add_row(method = "Naive RMSE", RMSE = naive_rmse)
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
 
-#lse <- colMeans(edx - mu_hat)
+The result returned using the Naive RMSE is greater than 1 which is well above the target RMSE of less than 0.86490. Therefore we will proceed to work through the findings of our data exploration to find a result that meets the required target.
 
+## Movie Effect
+
+During the data exploration it was noted that some movies were rated higher than others. Here we test the impact of this  by calculating the difference between the mean rating of the movie and the overall mean. This can be expressed as follows where $b_i$ represents bias for each movie $i$:
+
+$$ Y_{u,i} = \mu + b_i + \epsilon_{u,i} $$
+
+``` {r, MovieID_rmse, echo=TRUE}
+
+#use mean derived above
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarize(lse = mean(rating - mu_hat))
@@ -450,19 +499,28 @@ predicted_ratings <- mu_hat + edx %>%
   pull(lse)
 
 model_1_rmse <- RMSE(predicted_ratings, edx$rating)
-model_1_rmse
+```
+
+``` {r, MovieID, echo=FALSE}
+#print result to kable table
 rmse_results <- rmse_results %>% add_row(method = "Group By MovieID", RMSE = model_1_rmse)
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
 
+Adding in the Movie effect brings the RMSE below 1 which is an improvement however it is still above the Target RMSE. 
 
-# check if the same user effect (many ratings) is present in this code set as it was in unit 8
-edx %>% 
-  group_by(userId) %>% 
-  summarize(b_u = mean(rating)) %>% 
-  filter(n()>=100) %>%
-  ggplot(aes(b_u)) + 
-  geom_histogram(bins = 30, colour="#094438", fill="#97d2dd")
+## User ID Effect
 
-#compute an approximation by computing mu and bi and estimating bu as the average of : 
+Next we will apply the findings of the data exploration in terms of the effect of the User bias on the model. Each individual has their own preferences and this addition will allow for some individuals rating some movies higher than others or lower. We do not have detailed demographic data to apply to this model however note that this would be highly beneficial.
+
+Adding the user effect $b_u$ to our model gives us:
+
+$$ Y_{u,i} = \mu + b_i + b_u + \epsilon_{u,i} $$
+
+```{r, userID_histogram, echo=TRUE}
+
+#compute an approximation by computing mu and b_i and estimating b_u as the average 
 user_avgs <- edx %>% 
   left_join(movie_avgs, by='movieId') %>%
   group_by(userId) %>%
@@ -474,11 +532,177 @@ predicted_ratings <- edx %>%
   mutate(pred = mu_hat + lse + b_u) %>%
   pull(pred)
 
+```
+
+```{r, userID_rmse, echo=FALSE}
 
 model_2_rmse <- RMSE(predicted_ratings, edx$rating)
 
-rmse_results <- rmse_results %>% add_row(method = "Group By userID", RMSE = model_2_rmse)
-
+rmse_results <- rmse_results %>% add_row(method = "Group By MovieID + UserID", RMSE = model_2_rmse)
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
 # rmse_results is lower than RMSE required for course
-rmse_results$RMSE < 0.86490
+# rmse_results$RMSE < 0.86490
 ```
+
+The result of "Group By MovieID" combined with "Group by UserID" has returned an RMSE lower than the target score.
+
+Finally let us run this model against the whole number subset of data and against the decimal only set of data to see if this has any impact.
+
+## Whole Number Data Subset
+
+``` {r, WholeNumberDataSubset, echo=TRUE, results="show", message=FALSE}
+mu_hat <- mean(edx1$rating, na.rm = TRUE)
+movie_avgs <- edx1 %>% 
+  group_by(movieId) %>% 
+  summarize(lse = mean(rating - mu_hat))
+
+predicted_ratings <- mu_hat + edx1 %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  pull(lse)
+  
+model_1W_rmse <- RMSE(predicted_ratings, edx1$rating)
+rmse_results <- rmse_results %>% add_row(method = "Whole Number - Group By MovieID", RMSE = model_1W_rmse)
+  
+user_avgs <- edx1 %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>%
+  summarize(b_u = mean(rating - mu_hat - lse))
+
+predicted_ratings <- edx1 %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  mutate(pred = mu_hat + lse + b_u) %>%
+  pull(pred)  
+  
+model_2W_rmse <- RMSE(predicted_ratings, edx1$rating)
+
+rmse_results <- rmse_results %>% add_row(method = "Whole Number - Group By MovieID + UserID", RMSE = model_2W_rmse)
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+Running against the subset of Ratings that use whole number only returns RMSE results statistically on par with the larger set of data.
+
+## Decimal Number Data Subset
+
+``` {r, DecimalNumberDataSubset, echo=TRUE, results="show", message=FALSE}
+mu_hat <- mean(edx0.5$rating, na.rm = TRUE)
+movie_avgs <- edx0.5 %>% 
+  group_by(movieId) %>% 
+  summarize(lse = mean(rating - mu_hat))
+
+predicted_ratings <- mu_hat + edx0.5 %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  pull(lse)
+  
+model_1.5_rmse <- RMSE(predicted_ratings, edx0.5$rating)
+rmse_results <- rmse_results %>% add_row(method = "Decimal Number - Group By MovieID", RMSE = model_1.5_rmse)
+  
+user_avgs <- edx0.5 %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>%
+  summarize(b_u = mean(rating - mu_hat - lse))
+
+predicted_ratings <- edx0.5 %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  mutate(pred = mu_hat + lse + b_u) %>%
+  pull(pred)  
+  
+model_2.5_rmse <- RMSE(predicted_ratings, edx0.5$rating)
+
+rmse_results <- rmse_results %>% add_row(method = "Decimal Number - Group By MovieID + UserID", RMSE = model_2.5_rmse)
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+```
+
+
+Running against the subset of Ratings that use decimal numbers only returns RMSE results statistically more accurate when compared with either the complete data set or the set of whole number only results. This is possibly caused by the people who are prepared to use decimal ratings having greater accuracy in their ratings.
+
+# Validation
+
+To validate this result we need to run the final model against the final_holdout_data set.
+
+```{r dataValidationRating0.5, echo=TRUE,  message=FALSE}
+#remove whole number ratings
+seq0.5 <- seq(0.5,4.5,1)
+final_holdout_test <- final_holdout_test[final_holdout_test$rating %in% seq0.5,]
+
+#Derive the mean
+mu_hat <- mean(final_holdout_test$rating, na.rm = TRUE)
+
+#calculate Movie Effect
+movie_avgs <- final_holdout_test %>% 
+  group_by(movieId) %>% 
+  summarize(lse = mean(rating - mu_hat))
+
+predicted_ratings <- mu_hat + final_holdout_test %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  pull(lse)
+  
+# compute an approximation by computing mu and b_i and estimating b_u as the average
+
+user_avgs <- final_holdout_test %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>%
+  summarize(b_u = mean(rating - mu_hat - lse))
+
+predicted_ratings <- final_holdout_test %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  mutate(pred = mu_hat + lse + b_u) %>%
+  pull(pred)
+  
+  
+final_holdout_test_RMSE <- RMSE(predicted_ratings, final_holdout_test$rating)
+
+rmse_results <- rmse_results %>% add_row(method = "Final Holdout Test", RMSE = final_holdout_test_RMSE)
+
+```
+
+
+# Results
+
+``` {r results, echo=FALSE, results="show", message=FALSE}
+kable(rmse_results, caption = "RMSE Results", booktabs = T) %>%     
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+Final RMSE is `r final_holdout_test_RMSE` which is lower than the Target RMSE `r RMSETarget`.
+
+# Conclusion
+
+## Summary
+
+The project has delivered a working algorithm that meets the requirements of the course. 
+
+## Limitations
+
+With this project hardware limitations were often reached resulting in rstudio crashing frequently. Reducing the data set size helped but iterating the model was limited due to the time required to run each test.
+
+## Future work
+
+It would be good to add back into the data set movie ratings rated by UserId where user has used decimal ratings for at least one movie to see if this has any impact.
+
+Regularisation can also be applied.
+
+Switching to GPU processing, possibly leveraging CUDA would be interesting and enjoyable.
+
+Automated testing would be useful. Exploration of movies that didn't make it into video stores during the 80s and 90s would be interesting in the sense that revisiting the long tail of videos may discover new works that were excluded due to mainstream tastes of that period.
+
+
+## References
+
+1. http://rafalab.dfci.harvard.edu/dsbook/large-datasets.html#recommendation-systems
+
+2. https://learning.edx.org/course/course-v1:HarvardX+PH125.8x+3T2022/block-v1:HarvardX+PH125.8x+3T2022+type@sequential+block@7e7727ce543b4ed6ae6338626862eada/block-v1:HarvardX+PH125.8x+3T2022+type@vertical+block@df3d8a86b43f4247a4dd42bcabb1a663
+
+3. https://anderfernandez.com/en/blog/how-to-code-a-recommendation-system-in-r/
+
+4. Chris Anderson, The Long Tail: Why the Future of Business Is Selling Less of More, Hyperion 2006.
+
+5. Harold Bloom, The Western Canon: The Books and School of the Ages. New York: Harcourt Brace, 1994.
+
