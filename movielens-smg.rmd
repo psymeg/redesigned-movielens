@@ -52,7 +52,7 @@ if(!require(dplyr)) install.packages("dplyr", repos = "https://cran.us.r-project
 if(!require(kableExtra)) install.packages("kableExtra", repos = "https://cran.us.r-project.org")
 if(!require(lubridate)) install.packages("lubridate", repos = "https://cran.us.r-project.org")
 if(!require(scales)) install.packages("scales", repos = "https://cran.us.r-project.org")
-if(!require(stringr)) install.packages("scales", repos = "https://cran.us.r-project.org")
+if(!require(stringr)) install.packages("stringr", repos = "https://cran.us.r-project.org")
 
 library(tidyverse)
 library(caret)
